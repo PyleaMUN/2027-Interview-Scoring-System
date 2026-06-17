@@ -1248,6 +1248,8 @@
       applicantSource: 'Interviewee details are embedded in this page. The Google Sheet receives evaluation responses only.'
     };
 
+    const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw_GTjXgevm2aTQ29hXDKqlA0kzjNVOUz8hSBYUieavm1RrvzHt-5mEaQnyqL8Q14HJkg/exec';
+
     let appData = null;
     let currentApplicant = null;
     let saveInProgress = false;
@@ -1260,7 +1262,37 @@
     });
 
     function isAppsScriptAvailable() {
-      return typeof google !== 'undefined' && google.script && google.script.run;
+      return Boolean(APPS_SCRIPT_WEB_APP_URL);
+    }
+
+    async function callAppsScript(action, payload = {}) {
+      if (!APPS_SCRIPT_WEB_APP_URL) {
+        throw new Error('The Apps Script web app URL is missing.');
+      }
+
+      const response = await fetch(APPS_SCRIPT_WEB_APP_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: {
+          // text/plain keeps the request "simple" so GitHub Pages can call Apps Script without a CORS preflight.
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify({ action, ...payload })
+      });
+
+      const rawText = await response.text();
+      let data;
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch (err) {
+        throw new Error('Apps Script returned a non-JSON response: ' + rawText.slice(0, 200));
+      }
+
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.message || data.error || `Apps Script request failed (${response.status}).`);
+      }
+
+      return data.data ?? data;
     }
 
     function buildLocalAppData(summaryByApplicantId = {}, activeUserEmail = '') {
@@ -1296,25 +1328,25 @@
       refreshSummaryOnly(true);
     }
 
-    function refreshSummaryOnly(showWorkingMessage) {
+    async function refreshSummaryOnly(showWorkingMessage) {
       if (!isAppsScriptAvailable()) {
         if (showWorkingMessage) {
-          showStatus('Saved scoring summaries are available after deployment as a Google Apps Script web app.', 'info');
+          showStatus('Saved scoring summaries are unavailable because the Apps Script web app URL is missing.', 'info');
         }
         return;
       }
+
       if (showWorkingMessage) showStatus('Refreshing saved scoring summary…', 'info');
-      google.script.run
-        .withSuccessHandler(data => {
-          const previousApplicantId = document.getElementById('applicantSelect')?.value || '';
-          appData = buildLocalAppData(data.summaryByApplicantId || {}, data.activeUserEmail || '');
-          initialiseControls(previousApplicantId);
-          showStatus('Ready. Saved scoring summary refreshed.', 'ok');
-        })
-        .withFailureHandler(error => {
-          showStatus('Saved-score summary could not be refreshed: ' + (error.message || error), 'error');
-        })
-        .getSummaryData();
+
+      try {
+        const data = await callAppsScript('getSummaryData');
+        const previousApplicantId = document.getElementById('applicantSelect')?.value || '';
+        appData = buildLocalAppData(data.summaryByApplicantId || {}, data.activeUserEmail || '');
+        initialiseControls(previousApplicantId);
+        showStatus('Ready. Saved scoring summary refreshed.', 'ok');
+      } catch (error) {
+        showStatus('Saved-score summary could not be refreshed: ' + (error.message || error), 'error');
+      }
     }
 
     function initialiseControls(preferredApplicantId = '') {
@@ -1462,18 +1494,21 @@
       `;
     }
 
-    function maybeLoadExistingEvaluation() {
+    async function maybeLoadExistingEvaluation() {
       const interviewerName = document.getElementById('interviewerName').value.trim();
       if (!currentApplicant || !interviewerName || !isAppsScriptAvailable()) return;
 
-      google.script.run
-        .withSuccessHandler(existing => {
-          if (!existing) return;
-          fillExistingEvaluation(existing);
-          showStatus('Existing evaluation loaded for this interviewer and interviewee. Saving again will update it.', 'info');
-        })
-        .withFailureHandler(error => console.warn(error.message || error))
-        .getExistingEvaluation(currentApplicant.applicantId, interviewerName);
+      try {
+        const existing = await callAppsScript('getExistingEvaluation', {
+          applicantId: currentApplicant.applicantId,
+          interviewerName
+        });
+        if (!existing) return;
+        fillExistingEvaluation(existing);
+        showStatus('Existing evaluation loaded for this interviewer and interviewee. Saving again will update it.', 'info');
+      } catch (error) {
+        console.warn(error.message || error);
+      }
     }
 
     function fillExistingEvaluation(existing) {
@@ -1522,12 +1557,13 @@
       };
     }
 
-    function submitEvaluation() {
+    async function submitEvaluation() {
       if (saveInProgress) return;
       if (!isAppsScriptAvailable()) {
-        showStatus('This page can display applicants on its own, but saving requires deploying it as a Google Apps Script web app.', 'error');
+        showStatus('This page can display applicants on its own, but saving requires an Apps Script web app URL.', 'error');
         return;
       }
+
       let payload;
       try {
         payload = collectPayload();
@@ -1540,23 +1576,20 @@
       document.getElementById('saveButton').disabled = true;
       showStatus('Saving evaluation…', 'info');
 
-      google.script.run
-        .withSuccessHandler(result => {
-          showStatus(result.message || 'Saved.', 'ok');
-          if (result.summary && currentApplicant) {
-            appData.summaryByApplicantId[currentApplicant.applicantId] = result.summary;
-            renderSummary(result.summary);
-          }
-          saveInProgress = false;
-          document.getElementById('saveButton').disabled = false;
-          refreshSummaryOnly(false);
-        })
-        .withFailureHandler(error => {
-          showStatus(error.message || error, 'error');
-          saveInProgress = false;
-          document.getElementById('saveButton').disabled = false;
-        })
-        .saveEvaluation(payload);
+      try {
+        const result = await callAppsScript('saveEvaluation', { payload });
+        showStatus(result.message || 'Saved.', 'ok');
+        if (result.summary && currentApplicant) {
+          appData.summaryByApplicantId[currentApplicant.applicantId] = result.summary;
+          renderSummary(result.summary);
+        }
+        refreshSummaryOnly(false);
+      } catch (error) {
+        showStatus(error.message || error, 'error');
+      } finally {
+        saveInProgress = false;
+        document.getElementById('saveButton').disabled = false;
+      }
     }
 
     function clearForm(scoresOnly) {
