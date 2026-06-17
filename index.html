@@ -1249,6 +1249,7 @@
     };
 
     const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw_GTjXgevm2aTQ29hXDKqlA0kzjNVOUz8hSBYUieavm1RrvzHt-5mEaQnyqL8Q14HJkg/exec';
+    console.info('PyleaMUN GitHub version: saving via Apps Script API endpoint.', APPS_SCRIPT_WEB_APP_URL);
 
     let appData = null;
     let currentApplicant = null;
@@ -1262,7 +1263,7 @@
     });
 
     function isAppsScriptAvailable() {
-      return Boolean(APPS_SCRIPT_WEB_APP_URL);
+      return APPS_SCRIPT_WEB_APP_URL.startsWith('https://script.google.com/macros/s/');
     }
 
     async function callAppsScript(action, payload = {}) {
@@ -1331,7 +1332,7 @@
     async function refreshSummaryOnly(showWorkingMessage) {
       if (!isAppsScriptAvailable()) {
         if (showWorkingMessage) {
-          showStatus('Saved scoring summaries are unavailable because the Apps Script web app URL is missing.', 'info');
+          showStatus('Saved scoring summaries could not be loaded because the API endpoint is not configured correctly.', 'info');
         }
         return;
       }
@@ -1559,10 +1560,6 @@
 
     async function submitEvaluation() {
       if (saveInProgress) return;
-      if (!isAppsScriptAvailable()) {
-        showStatus('This page can display applicants on its own, but saving requires an Apps Script web app URL.', 'error');
-        return;
-      }
 
       let payload;
       try {
