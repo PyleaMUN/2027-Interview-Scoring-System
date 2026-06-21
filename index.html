@@ -479,6 +479,12 @@
           </div>
 
           <div class="field">
+            <label for="preferredCommittee">Preferred Committee for Consideration</label>
+            <select id="preferredCommittee"></select>
+            <div class="hint">Choose the committee that should be considered as this interviewee's preferred allocation.</div>
+          </div>
+
+          <div class="field">
             <label for="strengths">Strengths</label>
             <textarea id="strengths" placeholder="Key strengths noticed during the interview"></textarea>
           </div>
@@ -1275,6 +1281,23 @@
       "Do Not Recommend"
 ];
 
+    const LOCAL_COMMITTEES = [
+      "Security Council 1 (UNSC)",
+      "Security Council 2 (UNSC)",
+      "Committee on Digital Affairs & Sovereignty",
+      "Economic and Social Council (ECOSOC)",
+      "UNESCO",
+      "UN Environment Programme (UNEP)",
+      "World Health Organisation (WHO)",
+      "Human Rights Council (HRC)",
+      "UN Women",
+      "Social, Humanitarian & Cultural Committee (SOCHUM)",
+      "UN Office on Drugs and Crime (UNODC)",
+      "Historical Crisis Committee (HCC)",
+      "Special Tribunal on Intellectual & Political Subversion (STIPS)",
+      "NATO"
+    ];
+
     const LOCAL_CONFIG = {
       minimumEvaluations: 2,
       applicantSource: 'Interviewee details are embedded in this page. The Google Sheet receives evaluation responses only.'
@@ -1339,6 +1362,7 @@
       return {
         rubric: LOCAL_RUBRIC,
         recommendations: LOCAL_RECOMMENDATIONS,
+        committees: LOCAL_COMMITTEES,
         interviewees,
         groups,
         summaryByApplicantId,
@@ -1385,6 +1409,7 @@
     function initialiseControls(preferredApplicantId = '') {
       populateGroups();
       populateRecommendations();
+      populateCommittees();
       renderRubric();
       const email = appData.activeUserEmail || '';
       const interviewerInput = document.getElementById('interviewerName');
@@ -1408,6 +1433,15 @@
       recommendation.appendChild(new Option('Select recommendation', ''));
       (appData.recommendations || []).forEach(item => recommendation.appendChild(new Option(item, item)));
       if ([...recommendation.options].some(opt => opt.value === previousValue)) recommendation.value = previousValue;
+    }
+
+    function populateCommittees() {
+      const preferredCommittee = document.getElementById('preferredCommittee');
+      const previousValue = preferredCommittee.value;
+      preferredCommittee.innerHTML = '';
+      preferredCommittee.appendChild(new Option('Select committee', ''));
+      (appData.committees || []).forEach(item => preferredCommittee.appendChild(new Option(item, item)));
+      if ([...preferredCommittee.options].some(opt => opt.value === previousValue)) preferredCommittee.value = previousValue;
     }
 
     function renderRubric() {
@@ -1549,6 +1583,7 @@
         document.querySelectorAll(`[data-score-key="${key}"]`).forEach(input => input.value = existing.scores[key]);
       });
       document.getElementById('recommendation').value = existing.recommendation || '';
+      document.getElementById('preferredCommittee').value = existing.preferredCommittee || '';
       document.getElementById('strengths').value = existing.strengths || '';
       document.getElementById('weaknesses').value = existing.weaknesses || '';
       document.getElementById('comments').value = existing.comments || '';
@@ -1559,6 +1594,8 @@
       if (!currentApplicant) throw new Error('Please select an interviewee.');
       const interviewerName = document.getElementById('interviewerName').value.trim();
       if (!interviewerName) throw new Error('Please enter the interviewer name.');
+      const preferredCommittee = document.getElementById('preferredCommittee').value;
+      if (!preferredCommittee) throw new Error('Please select the preferred committee for consideration.');
 
       const scores = {};
       appData.rubric.forEach(item => {
@@ -1584,6 +1621,7 @@
         interviewerName,
         scores,
         recommendation: document.getElementById('recommendation').value,
+        preferredCommittee,
         strengths: document.getElementById('strengths').value,
         weaknesses: document.getElementById('weaknesses').value,
         comments: document.getElementById('comments').value
@@ -1624,6 +1662,7 @@
     function clearForm(scoresOnly) {
       document.querySelectorAll('[data-score-key]').forEach(input => input.value = 0);
       document.getElementById('recommendation').value = '';
+      document.getElementById('preferredCommittee').value = '';
       document.getElementById('strengths').value = '';
       document.getElementById('weaknesses').value = '';
       document.getElementById('comments').value = '';
